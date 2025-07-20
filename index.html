@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GPU Shadow</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // ✅ เปิดใช้งานเงา!
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        document.body.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+
+        // ✅ Directional Light ที่สร้างเงา
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 5);
+        light.castShadow = true;
+        light.shadow.mapSize.width = 1024;
+        light.shadow.mapSize.height = 1024;
+        light.shadow.camera.near = 0.5;
+        light.shadow.camera.far = 50;
+
+        scene.add(light);
+
+        // ✅ Ambient Light เล็กน้อยให้สว่างรวม
+        const ambient = new THREE.AmbientLight(0x404040);
+        scene.add(ambient);
+
+        // ✅ กล้อง
+        camera.position.set(0, 1, 5);
+        camera.lookAt(0, 0, 0);
+
+        // ✅ กล่อง
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.castShadow = true; // ✅ กล่องส่งเงา
+        cube.receiveShadow = false; // ✅ กล่องไม่รับเงา (ไม่จำเป็น)
+        scene.add(cube);
+
+        // ✅ ทรงกลม
+        const geometry2 = new THREE.SphereGeometry(0.5, 16, 16);
+        const sphere = new THREE.Mesh(
+            geometry2,
+            new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+        );
+        sphere.position.set(2, 0.5, 0);
+        sphere.castShadow = true; // ✅ ทรงกลมส่งเงา
+        scene.add(sphere);
+
+        // ✅ พื้น
+        const planeGeometry = new THREE.PlaneGeometry(10, 10);
+        const planeMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2; // หมุนให้เป็นพื้น
+        plane.position.y = -0.5;
+        plane.receiveShadow = true; // ✅ พื้นรับเงา
+        scene.add(plane);
+
+        // ✅ กล่องเคลื่อนที่
+        let move = {
+            left: false,
+            right: false,
+            forward: false,
+            backward: false,
+            up: false,    // ⬆️ แกน Y
+            down: false   // ⬇️ แกน Y
+        };
+
+        let cubeRotate = {
+            left: false,
+            right: false,
+            up: false,
+            down: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyA') move.left = true;
+            if (e.code === 'KeyD') move.right = true;
+            if (e.code === 'KeyW') move.forward = true;
+            if (e.code === 'KeyS') move.backward = true;
+            if (e.code === 'KeyQ') move.up = true;
+            if (e.code === 'KeyE') move.down = true;
+
+            if (e.code === 'ArrowLeft') cubeRotate.left = true;
+            if (e.code === 'ArrowRight') cubeRotate.right = true;
+            if (e.code === 'ArrowUp') cubeRotate.up = true;
+            if (e.code === 'ArrowDown') cubeRotate.down = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyA') move.left = false;
+            if (e.code === 'KeyD') move.right = false;
+            if (e.code === 'KeyW') move.forward = false;
+            if (e.code === 'KeyS') move.backward = false;
+            if (e.code === 'KeyQ') move.up = false;
+            if (e.code === 'KeyE') move.down = false;
+
+            if (e.code === 'ArrowLeft') cubeRotate.left = false;
+            if (e.code === 'ArrowRight') cubeRotate.right = false;
+            if (e.code === 'ArrowUp') cubeRotate.up = false;
+            if (e.code === 'ArrowDown') cubeRotate.down = false;
+        });
+
+        // ✅ render loop
+        function animate(t) {
+
+            // ✅ เคลื่อนที่กล่องด้วยปุ่ม
+            const speed = 0.05;
+            if (move.left) cube.position.x -= speed;
+            if (move.right) cube.position.x += speed;
+            if (move.forward) cube.position.z -= speed;
+            if (move.backward) cube.position.z += speed;
+            if (move.up) cube.position.y += speed;
+            if (move.down) cube.position.y -= speed;
+            // หมุนกล่องด้วยปุ่ม
+            const rotateSpeed = 0.03;
+            if (cubeRotate.left) cube.rotation.y -= rotateSpeed;
+            if (cubeRotate.right) cube.rotation.y += rotateSpeed;
+            if (cubeRotate.up) cube.rotation.x -= rotateSpeed;
+            if (cubeRotate.down) cube.rotation.x += rotateSpeed;
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+        animate(0);
+
+    </script>
+</body>
+
+</html>
