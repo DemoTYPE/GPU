@@ -80,7 +80,7 @@
     // โหลดโมเดล .glb
     const gltfLoader = new THREE.GLTFLoader();
 
-    // ตัวอย่าง: โมเดล DamagedHelmet จาก Khronos
+    // ตัวอย่าง: โมเดล 
     gltfLoader.load(
       'https://demotype.github.io/GPU/monowheel_bot__vgdc.glb',
       function (gltf) {
@@ -120,13 +120,26 @@
         console.error('Error loading GLB:', error);
       }
     );
-
-
-
-
-
-
-
+    gltfLoader.load(
+      'https://demotype.github.io/GPU/low_poly_game_ready_kfc.glb',
+      function (gltf) {
+        const model1 = gltf.scene;
+        model1.position.set(2.5, 0, -2);   // ตำแหน่ง
+        model1.scale.set(0.2, 0.2, 0.2);      // ขนาด
+        model1.rotation.set(0, 1, 0);
+        model1.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;   // ให้เงา
+            child.receiveShadow = true;
+          }
+        });
+        scene.add(model1);
+      },
+      undefined,
+      function (error) {
+        console.error('Error loading GLB:', error);
+      }
+    );
 
     // Lights
     const directionalLight = new THREE.DirectionalLight(0xffeedd, 0.9);
