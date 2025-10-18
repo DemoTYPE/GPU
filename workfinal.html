@@ -12,6 +12,7 @@
       overflow: hidden;
       width: 100%;
       height: 100%;
+      font-family: sans-serif;
     }
 
     canvas {
@@ -19,10 +20,52 @@
       width: 100vw;
       height: 100vh;
     }
+
+    /* 🔹 ปุ่มเปลี่ยนมุมกล้อง */
+    #camera-buttons {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    #camera-buttons button {
+      background: linear-gradient(135deg, #007bff, #00c6ff);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 18px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    }
+
+    #camera-buttons button:hover {
+      transform: scale(1.08);
+      background: linear-gradient(135deg, #00aaff, #00ffcc);
+    }
+
+    #camera-buttons button:active {
+      transform: scale(0.95);
+    }
   </style>
 </head>
 
 <body>
+  <!-- 🔸 ปุ่มเปลี่ยนมุมกล้อง -->
+  <div id="camera-buttons">
+    <button data-view="Default">Default</button>
+    <button data-view="Monowheel_View">Monowheel</button>
+    <button data-view="KU_View">KU Profile</button>
+    <button data-view="AzureWhite_View">Azure White</button>
+    <button data-view="Moon_View">Moon</button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -55,21 +98,21 @@
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // 🔸 แสง
+    // Lights
     const directionalLight = new THREE.DirectionalLight(0xffeedd, 0.9);
     directionalLight.position.set(10, 5, 10);
     directionalLight.castShadow = true;
     scene.add(directionalLight);
 
     const pointLight = new THREE.PointLight(0xffeedd, 1);
-    pointLight.position.set(8, 0, -5);
+    pointLight.position.set(8, 0, 8);
     pointLight.castShadow = true;
     scene.add(pointLight);
 
-    // 🔸 GUI แสง
     const lightFolder = gui.addFolder('Lights');
     lightFolder.add(directionalLight, 'intensity', 0, 2);
     lightFolder.add(pointLight, 'intensity', 0, 2);
+
     // HDRI
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     new THREE.RGBELoader()
@@ -82,21 +125,150 @@
         pmremGenerator.dispose();
       });
 
-    // Load models
-    let monowheel;
+    // Models
+    let monowheel, azurewhite;
     const gltfLoader = new THREE.GLTFLoader();
+
     gltfLoader.load('https://demotype.github.io/GPU/monowheel_bot__vgdc.glb', (gltf) => {
       monowheel = gltf.scene;
-      monowheel.scale.set(0.1, 0.1, 0.1);      // ขนาด
+      monowheel.scale.set(0.1, 0.1, 0.1);
       monowheel.rotation.set(0, 1, 0);
       monowheel.traverse(c => { if (c.isMesh) { c.castShadow = c.receiveShadow = true; } });
       scene.add(monowheel);
     });
 
+    gltfLoader.load('https://demotype.github.io/GPU/white_hen_of_azure_lane.glb', (gltf) => {
+      azurewhite = gltf.scene;
+      azurewhite.position.set(5, 4, -2);
+      azurewhite.scale.set(1.5, 1.5, 1.5);
+      azurewhite.rotation.set(0, 1, 0);
+      azurewhite.traverse((c) => {
+        if (c.isMesh) {
+          const texture = c.material.map;
+          c.material = new THREE.ShaderMaterial({
+            uniforms: {
+              lightDirection: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
+              baseColor: { value: new THREE.Color(0xffffff) },
+              map: { value: texture },
+            },
+            vertexShader: `
+              varying vec3 vNormal;
+              varying vec2 vUv;
+              void main() {
+                vNormal = normalize(normalMatrix * normal);
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `,
+            fragmentShader: `
+              varying vec3 vNormal;
+              varying vec2 vUv;
+              uniform vec3 lightDirection;
+              uniform vec3 baseColor;
+              uniform sampler2D map;
+
+              void main() {
+                vec3 texColor = texture2D(map, vUv).rgb;
+                float light = dot(normalize(vNormal), normalize(lightDirection));
+                float levels = 4.0;
+                light = floor(light * levels) / (levels - 0.5);
+                light = clamp(light, 0.1, 1.0);
+                vec3 color = texColor * baseColor * light;
+                gl_FragColor = vec4(color, 1.0);
+              }
+            `,
+            side: THREE.FrontSide,
+          });
+          c.castShadow = true;
+          c.receiveShadow = true;
+        }
+      });
+      scene.add(azurewhite);
+    });
+
+    gltfLoader.load('https://demotype.github.io/GPU/the_moon.glb', (gltf) => {
+      const moon = gltf.scene;
+      moon.position.set(0, 15, 0);
+      moon.scale.set(3, 3, 3);
+      moon.rotation.set(0, 0, 0);
+
+      const startTime = Date.now();
+      moon.traverse((c) => {
+        if (c.isMesh) {
+          // 🔹 เก็บ texture เดิมไว้ (จาก material เดิม)
+          const texture = c.material.map;
+
+          // 🔹 สร้าง ShaderMaterial ใหม่
+          c.material = new THREE.ShaderMaterial({
+            uniforms: {
+              uTime: { value: 0 },
+              map: { value: texture }
+            },
+            vertexShader: `
+          uniform float uTime;
+          varying vec2 vUv;
+          varying vec3 vNormal;
+
+          // ฟังก์ชัน noise แบบง่าย (ไม่ต้องใช้ external)
+          float snoise(vec3 v){
+            return sin(v.x*2.0 + v.y*3.0 + v.z*1.5);
+          }
+
+          void main() {
+            vUv = uv;
+            vNormal = normalize(normalMatrix * normal);
+            vec3 pos = position;
+
+            // 🔸 เพิ่มการกระเพื่อมแบบ organic
+            float wave = snoise(vec3(pos * 0.5 + uTime * 0.3));
+            pos += normal * wave * 0.1; // ขยับ vertex ตาม normal
+
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+          }
+        `,
+            fragmentShader: `
+          varying vec2 vUv;
+          varying vec3 vNormal;
+          uniform sampler2D map;
+
+          void main() {
+            vec3 color = texture2D(map, vUv).rgb;
+
+            // คำนวณแสงเบา ๆ
+            float light = dot(normalize(vNormal), normalize(vec3(0.5, 1.0, 0.3)));
+            light = clamp(light, 0.2, 1.0);
+
+            gl_FragColor = vec4(color * light, 1.0);
+          }
+        `,
+          });
+
+          c.castShadow = true;
+          c.receiveShadow = true;
+        }
+      });
+
+      scene.add(moon);
+
+      // 🔸 อัปเดตเวลาใน loop
+      const clock = new THREE.Clock();
+      function updateMoon() {
+        const elapsed = clock.getElapsedTime();
+        moon.traverse((c) => {
+          if (c.isMesh && c.material.uniforms) {
+            c.material.uniforms.uTime.value = elapsed;
+          }
+        });
+        requestAnimationFrame(updateMoon);
+      }
+      updateMoon();
+    });
+
+
     gltfLoader.load('https://demotype.github.io/GPU/low_poly_game_ready_kfc.glb', (gltf) => {
       const model1 = gltf.scene;
-      model1.position.set(2.5, 0, -2);   // ตำแหน่ง
-      model1.scale.set(0.4, 0.4, 0.4);      // ขนาด
+      model1.position.set(2.5, 0, -2);
+      model1.scale.set(0.4, 0.4, 0.4);
       model1.rotation.set(0, 1, 0);
       model1.traverse(c => { if (c.isMesh) { c.castShadow = c.receiveShadow = true; } });
       scene.add(model1);
@@ -104,39 +276,57 @@
 
     gltfLoader.load('https://demotype.github.io/GPU/KUMEv2.glb', (gltf) => {
       const modelku = gltf.scene;
-      modelku.position.set(5.9,1.68, -1.5);   // ตำแหน่ง
-      modelku.scale.set(1.5, 1.5, 1.5);      // ขนาด
+      modelku.position.set(5.9, 1.68, -1.5);
+      modelku.scale.set(1.5, 1.5, 1.5);
       modelku.rotation.set(0, 1, 0);
       modelku.traverse(c => { if (c.isMesh) { c.castShadow = c.receiveShadow = true; } });
       scene.add(modelku);
     });
 
-    // Camera preset
+    gltfLoader.load('https://demotype.github.io/GPU/realistic_chicago_buildings.glb', (gltf) => {
+      const modelmap = gltf.scene;
+      modelmap.position.set(-4.6, -0.9, 4.5);
+      modelmap.scale.set(0.08, 0.08, 0.08);
+      modelmap.rotation.set(0, 1.5, 0);
+      modelmap.traverse(c => { if (c.isMesh) { c.castShadow = c.receiveShadow = true; } });
+      scene.add(modelmap);
+    });
+
+    gltfLoader.load('https://demotype.github.io/GPU/realistic_chicago_buildings.glb', (gltf) => {
+      const modelmap1 = gltf.scene;
+      modelmap1.position.set(-10, -0.9, -3);   // ตำแหน่ง
+      modelmap1.scale.set(0.08, 0.08, 0.08);      // ขนาด
+      modelmap1.rotation.set(0, 0, 0);
+      modelmap1.traverse(c => { if (c.isMesh) { c.castShadow = c.receiveShadow = true; } });
+      scene.add(modelmap1);
+    });
+
+    // Camera views
     const cameraTarget = new THREE.Vector3(0, 2, 4);
     const cameraLookTarget = new THREE.Vector3(0, 1, 0);
     const views = {
       Default: { pos: new THREE.Vector3(0, 2, 4), look: new THREE.Vector3(0, 1, 0) },
-      KFC_View: { pos: new THREE.Vector3(2, 3, 6), look: new THREE.Vector3(2.5, 0.8, -2) },
-      Monowheel_View: { pos: new THREE.Vector3(-4, 2.5, 1), look: new THREE.Vector3(-2, 0.5, 0) },
-      KU_View: { pos: new THREE.Vector3(8.5,2.8, -1), look: new THREE.Vector3(3.4, 1, -3.4) }
+      Monowheel_View: { pos: new THREE.Vector3(0.7, 2.5, 2), look: new THREE.Vector3(-3.4, 0.5, 0) },
+      KU_View: { pos: new THREE.Vector3(8.5, 2.8, -1), look: new THREE.Vector3(3.4, 1, -3.4) },
+      AzureWhite_View: { pos: new THREE.Vector3(7, 5, -4), look: new THREE.Vector3(5, 4, -2) },
+      Moon_View: { pos: new THREE.Vector3(5, 17, 10), look: new THREE.Vector3(0, 15, 0) }
     };
-    const camFolder = gui.addFolder('Camera Views');
-    const camControls = {
-      View_Default: () => { cameraTarget.copy(views.Default.pos); cameraLookTarget.copy(views.Default.look); },
-      View_KFC: () => { cameraTarget.copy(views.KFC_View.pos); cameraLookTarget.copy(views.KFC_View.look); },
-      View_Monowheel: () => { cameraTarget.copy(views.Monowheel_View.pos); cameraLookTarget.copy(views.Monowheel_View.look); },
-      View_KU: () => { cameraTarget.copy(views.KU_View.pos); cameraLookTarget.copy(views.KU_View.look); }
-    };
-    camFolder.add(camControls, 'View_Default').name('Default');
-    camFolder.add(camControls, 'View_KFC').name('KFC');
-    camFolder.add(camControls, 'View_Monowheel').name('Monowheel');
-    camFolder.add(camControls, 'View_KU').name('KU');
-    camFolder.open();
 
-    // Monowheel circular motion variables
+    // ปุ่ม HTML เปลี่ยนมุมกล้อง
+    document.querySelectorAll('#camera-buttons button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const view = views[btn.dataset.view];
+        if (view) {
+          cameraTarget.copy(view.pos);
+          cameraLookTarget.copy(view.look);
+        }
+      });
+    });
+
+    // Monowheel movement
     let angle = 0;
     const radius = 1.25;
-    const center = new THREE.Vector3(-2, 0, 0); // จุดกึ่งกลางวงกลม
+    const center = new THREE.Vector3(-2, 0, 0);
 
     // Camera follow on click
     let followMonowheel = false;
@@ -157,7 +347,6 @@
       }
     });
 
-    // Lerp helper
     function lerp(a, b, t) { return a + (b - a) * t; }
 
     // Animate
@@ -166,26 +355,25 @@
         angle += 0.01;
         const x = center.x + Math.cos(angle) * radius;
         const z = center.z + Math.sin(angle) * radius;
-        const y = 0; // ความสูง
+        const y = 0;
         const prevPos = monowheel.position.clone();
         monowheel.position.lerp(new THREE.Vector3(x, y, z), 0.1);
-
-        // หมุน Monowheel ตามการเคลื่อนที่
         const delta = monowheel.position.clone().sub(prevPos);
         if (delta.length() > 0.001) {
           const targetRot = Math.atan2(delta.x, delta.z);
           monowheel.rotation.y = lerp(monowheel.rotation.y, targetRot, 0.1);
         }
       }
-
-      // กล้องตาม Monowheel
-      if (followMonowheel && monowheel) {
-        const desiredPos = monowheel.position.clone().add(cameraOffset);
-        cameraTarget.lerp(desiredPos, 0.05);
-        cameraLookTarget.lerp(monowheel.position, 0.05);
+      if (cameraLookTarget.y > 10) { // ตรวจว่ากำลังดู Moon อยู่
+        const t = Date.now() * 0.0002;
+        cameraTarget.set(Math.sin(t) * 10, 17, Math.cos(t) * 10);
       }
 
-      // กล้อง lerp ตาม preset
+      // หมุน Azure White อยู่กับที่
+      if (azurewhite) {
+        azurewhite.rotation.y += 0.01;
+      }
+
       camera.position.lerp(cameraTarget, 0.01);
       controls.target.lerp(cameraLookTarget, 0.01);
       controls.update();
@@ -195,7 +383,6 @@
     }
     animate();
 
-    // Resize
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
